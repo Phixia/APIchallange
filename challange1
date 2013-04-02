@@ -1,0 +1,111 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#Anders Nelson 03-27-2013
+
+# All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License. You may obtain
+# a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+
+# First we import some needed tools, set up our auth, and define some basic variables
+import os
+import pyrax
+import time
+
+creds_file = os.path.expanduser("~/.rackspace_cloud_credentials")
+pyrax.set_credential_file(creds_file)
+
+cs = pyrax.cloudservers
+imgs = cs.images.list()
+flavors = cs.flavors.list()
+
+# Ask for a series name, this is the name we will use for each server and append a number onto the end of.
+print "Please enter a server series name, numbers will be appended onto the end of this name for every server in the series"
+x = raw_input('--> ')
+
+# We need to sanatize this entry and make sure the name is alphanumeric so we don't have issues later.
+while x.isalnum() == False:
+	print "That is an invalid entry, please enter a server series name using alpha-numeric characters."
+	x = raw_input('--> ')
+else:
+	series_name = x
+
+# Now we need to ask how many servers the user wants, we will force them to pick a sane number 1-50.
+while True:
+	try:
+		n = int(raw_input("How many servers would you like to create in the " + series_name  + " series? --> "))
+		if n < 1 or n > 50:
+			raise ValueError
+		break
+	except ValueError:
+		print "This is an invalid value, please use a number from 1 to 50."
+
+server_amount = n
+
+# For this bit we will present a list of server images and let the user choose one.
+count = 1
+for img in imgs:
+    	print str(count) + ": " + img.name
+	count += 1
+while True:
+	try:
+		n = int(raw_input("Please enter the number ID for the image you would like to use from the above list. --> "))
+		if n < 1 or n > count:
+			raise ValueError
+		break
+	except ValueError:
+		print "Please enter a number from 1 to " + str(count) + "."
+
+# Now take that number choice and make it mean something!
+image_number = n - 1
+server_id = imgs[image_number].id
+
+# Let us choose a flavor now! This bit prints a list just like the images list but for RAM size.
+count = 1
+for flavor in flavors:
+	print str(count) + ": " + flavor.name
+	count += 1
+while True:
+	try:
+		f = int(raw_input("Please enter the number ID for the size of servers you wish to create. ---> "))
+		if f < 1 or f > count:
+			raise ValueError
+		break
+	except ValueError:
+		print "Please enter a number from 1 to " + str(count) + "."
+
+flavor_number = f - 1
+server_flavor = flavors[flavor_number].id
+
+# Now that we have all this  we need to use it to build servers.
+
+servs = [] #this is a list of the servers we build
+count = 0  #set to 0 and not 1 so that we can build 1 server and our loop work
+
+while count != server_amount:
+	server_name = series_name + "_" + str((count + 1)) 
+	server = cs.servers.create(server_name, server_id, server_flavor)
+	servs.append(server) 
+	count += 1
+
+# While the server builds have been sent we can't get networks until the build is done, so we need to check that the status is ACTIVE before we continue.
+
+print "Building requested server/s now..."
+for i in servs:
+	while cs.servers.get(i.id).status != "ACTIVE":
+		time.sleep(30)
+	 	print "Still building..."
+	print "Server Name: ", i.name
+	print "Admin Password: ", i.adminPass
+	print "Public IP: ", cs.servers.get(i.id).networks["public"][0]
+
+			
