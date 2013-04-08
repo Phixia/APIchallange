@@ -1,0 +1,89 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#Anders Nelson 04-2-2013
+
+# All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License. You may obtain
+# a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+
+# First we import some needed tools, set up our auth, and define some basic variables
+import os
+import pyrax
+import time
+
+creds_file = os.path.expanduser("~/.rackspace_cloud_credentials")
+pyrax.set_credential_file(creds_file)
+
+cs = pyrax.cloudservers
+
+servers = cs.servers.list()
+
+# We are going to provide a numbered list of all the existing servers, then ask the user to pick which one they want to create an image of.
+
+count = 1
+for  server in servers:
+	print str(count) + ":" + server.name
+	count += 1
+while True:
+	try:
+		n = int(raw_input("Please enter the number ID for the server you would like to create an image of. --> "))
+		if n < 1 or n > (count - 1):
+			raise ValueError
+		break
+	except ValueError:
+		print "Please enter a number from 1 to " + str(count - 1) + "."
+# now take that number and make it useful to us!
+
+image_number = n - 1
+# grab the ID so we can use if to create an image.
+image_id = servers[image_number].id
+# grab the RAM size so we can create an image of the same size.
+image_flavor = servers[image_number].flavor['id'] 
+
+# Ask for a server name, this is the name we will use for the image and the new server.
+print "Please enter a server name."
+x = raw_input('--> ')
+
+# We need to sanatize this entry and make sure the name is alphanumeric so we don't have issues later.
+while x.isalnum() == False:
+	print "That is an invalid entry, please enter a server name using alpha-numeric characters."
+	x = raw_input('--> ')
+else:
+	server_name = x
+
+#create the image
+new_image = cs.servers.create_image(image_id, server_name)
+# we need to ensure the image is complete before we spin a server off of it.
+# we use a get to grab the info about the ID of the image we just created
+image_id = cs.images.get(new_image)
+while image_id.status != "ACTIVE":
+	time.sleep(120)
+	print "Creating image..."
+	image_id = cs.images.get(new_image)
+	print image_id.status
+print "Image complete, building server."
+# create the server from the image
+new_serv = cs.servers.create(server_name, new_image, image_flavor)
+new_servid = cs.servers.get(new_serv)
+# once the server build command is sent we need to wait for the server to finish building.
+while new_servid.status != "ACTIVE":
+	time.sleep(60)
+	print "Still building..."
+	new_servid = cs.servers.get(new_serv)
+	print new_servid.status
+# now that the build is complete we can get the info we want.
+print "Server Name: ", new_serv.name
+print "Admin Password: ", new_serv.adminPass
+print "Public IP: ", cs.servers.get(new_serv.id).networks["public"][0]
+
+
